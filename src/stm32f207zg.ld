@@ -2,14 +2,13 @@ EXTERN(vector_table)
 ENTRY(reset_handler)
 MEMORY
 {
- rom (rx) : ORIGIN = 0x08000000, LENGTH = 2048K
- ram (rwx) : ORIGIN = 0x20000000, LENGTH = 640K
+ ram (rwx) : ORIGIN = 0x20000000, LENGTH = 128K
+ rom (rx) : ORIGIN = 0x08000000, LENGTH = 1024K
 }
 SECTIONS
 {
  .text : {
   *(.vectors)
-  . = ALIGN(448);
   *(.text*)
   . = ALIGN(4);
   *(.rodata*)
@@ -58,8 +57,8 @@ SECTIONS
   . = ALIGN(4);
   _ebss = .;
  } >ram
- end = .;
  /DISCARD/ : { *(.eh_frame) }
  . = ALIGN(4);
+ end = .;
 }
 PROVIDE(_stack = ORIGIN(ram) + LENGTH(ram));

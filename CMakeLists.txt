@@ -10,7 +10,7 @@ set(CMAKE_INSTALL_BINDIR ${OUTPUT}/bin)
 set(CMAKE_INSTALL_LIBDIR ${OUTPUT}/lib)
 set(CMAKE_INSTALL_SRCDIR ${OUTPUT}/src)
 set(CMAKE_INSTALL_INCLUDEDIR ${OUTPUT}/include/platform)
-set(LINKER_SCRIPT ${PROJECT_SOURCE_DIR}/src/stm32l4r5zi.ld)
+set(LINKER_SCRIPT ${PROJECT_SOURCE_DIR}/src/stm32f207zg.ld)
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}")
 
 include(postbuild)
@@ -56,7 +56,7 @@ target_include_directories(
         ${CMAKE_SOURCE_DIR}/inc)
 
 add_custom_target(libopencm3
-    COMMAND FP_FLAGS="-mfloat-abi=soft" CFLAGS='-fno-asynchronous-unwind-tables' CC=${CMAKE_C_COMPILER} make V=1 TARGETS='stm32/l4'
+    COMMAND FP_FLAGS="-mfloat-abi=soft" CFLAGS='-fno-asynchronous-unwind-tables' CC=${CMAKE_C_COMPILER} make V=1 TARGETS='stm32/f2'
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/3rd/libopencm3)
 
 add_dependencies(${MAIN_TARGET} libopencm3)
@@ -67,11 +67,11 @@ add_executable(
     src/handlers.c)
 target_include_directories(
         hello PRIVATE ${CMAKE_BINARY_DIR}/3rd/libopencm3/include)
-target_compile_definitions(hello PRIVATE -DSTM32L4)
+target_compile_definitions(hello PRIVATE -DSTM32F2)
 target_link_libraries(
     hello
     ${MAIN_TARGET}
-    -L${CMAKE_BINARY_DIR}/3rd/libopencm3/lib -lopencm3_stm32l4)
+    -L${CMAKE_BINARY_DIR}/3rd/libopencm3/lib -lopencm3_stm32f2)
 target_link_options(
     hello PRIVATE
     "-T${LINKER_SCRIPT}" -nostartfiles)
@@ -90,8 +90,8 @@ install(
 
 install(
     FILES
-        ${CMAKE_BINARY_DIR}/3rd/libopencm3/lib/libopencm3_stm32l4.a
-        ${CMAKE_SOURCE_DIR}/src/stm32l4r5zi.ld
+        ${CMAKE_BINARY_DIR}/3rd/libopencm3/lib/libopencm3_stm32f2.a
+        ${CMAKE_SOURCE_DIR}/src/stm32f207zg.ld
     DESTINATION
         ${CMAKE_INSTALL_LIBDIR})
 

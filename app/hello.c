@@ -18,7 +18,7 @@
 #include <stdint.h>
 
 int main(void) {
-    platform_init(PLATFORM_CLOCK_USERSPACE);
+    platform_init(PLATFORM_CLOCK_MAX);
     platform_sync();
     size_t i = 0;
     struct platform_attr_t a;

@@ -23,42 +23,53 @@
 extern volatile unsigned long long stm32_sys_tick_overflowcnt;
 
 void hard_fault_handler(void) {
-    // Read the fault status registers using libopencm3 macros
-    uint32_t cfsr  = SCB_CFSR;   // Configurable Fault Status Register
-    uint32_t hfsr  = SCB_HFSR;   // HardFault Status Register
-    uint32_t mmfar = SCB_MMFAR;  // MemManage Fault Address Register
-    uint32_t bfar  = SCB_BFAR;   // BusFault Address Register
+    __asm volatile(
+        "TST lr, #4 \n"              // Test EXC_RETURN bit 2
+        "ITE EQ \n"                  // If bit is 0, go to msp
+        "MRSEQ r0, MSP \n"           // Use MSP
+        "MRSNE r0, PSP \n"           // Use PSP
+        "B hard_fault_handler_c \n"  // Branch to C handler
+    );
+}
 
-    // Output fault information (ensure UART/SWO is configured to handle printf)
-    printf("\n-----------------------------------------\n");
-    printf("\n Fault handler:\n");
-    printf("\n-----------------------------------------\n");
-    printf("CFSR: 0x%08lx\n", cfsr);
-    printf("HFSR: 0x%08lx\n", hfsr);
+void hard_fault_handler_c(uint32_t *stacked_args) {
+    volatile uint32_t stacked_r0  = stacked_args[0];
+    volatile uint32_t stacked_r1  = stacked_args[1];
+    volatile uint32_t stacked_r2  = stacked_args[2];
+    volatile uint32_t stacked_r3  = stacked_args[3];
+    volatile uint32_t stacked_r12 = stacked_args[4];
+    volatile uint32_t stacked_lr  = stacked_args[5];
+    volatile uint32_t stacked_pc  = stacked_args[6];
+    volatile uint32_t stacked_psr = stacked_args[7];
 
-    // Check if a MemManage fault occurred (CFSR bits [7:0])
-    if (cfsr & (1 << 0)) {
-        printf("Instruction access violation\n");
-    }
-    if (cfsr & (1 << 1)) {
-        printf("Data access violation\n");
-    }
-    if (cfsr & (1 << 7)) {
-        printf("MemManage Fault at address: 0x%08lx\n", mmfar);
-    }
+    // You can log these registers using a debugging interface
+    // Example:
+    // debug_print("HardFault: R0 = 0x%08X\n", stacked_r0);
+    // debug_print("R1 = 0x%08X\n", stacked_r1);
+    // debug_print("R2 = 0x%08X\n", stacked_r2);
+    // debug_print("R3 = 0x%08X\n", stacked_r3);
+    // debug_print("R12 = 0x%08X\n", stacked_r12);
+    // debug_print("LR = 0x%08X\n", stacked_lr);
+    // debug_print("PC = 0x%08X\n", stacked_pc);
+    // debug_print("PSR = 0x%08X\n", stacked_psr);
 
-    // Check if a BusFault occurred (CFSR bits [15:8])
-    if (cfsr & (1 << 8)) {
-        printf("Instruction bus error\n");
-    }
-    if (cfsr & (1 << 9)) {
-        printf("Precise data bus error\n");
-    }
-    if (cfsr & (1 << 15)) {
-        printf("Bus Fault at address: 0x%08lx\n", bfar);
-    }
+    // Optional: Inspect the HardFault Status Register
+    volatile uint32_t hfsr = SCB_HFSR;
+    // debug_print("HFSR = 0x%08X\n", hfsr);
 
-    // Infinite loop to indicate HardFault occurred
+    // Optional: Inspect Configurable Fault Status Register (CFSR)
+    volatile uint32_t cfsr = SCB_CFSR;
+    // debug_print("CFSR = 0x%08X\n", cfsr);
+
+    // Optional: BusFault Address Register (BFAR)
+    volatile uint32_t bfar = SCB_BFAR;
+    // debug_print("BFAR = 0x%08X\n", bfar);
+
+    // Optional: Memory Management Fault Address Register (MMFAR)
+    volatile uint32_t mmfar = SCB_MMFAR;
+    // debug_print("MMFAR = 0x%08X\n", mmfar);
+
+    // Infinite loop to halt the program for debugging
     while (1)
         ;
 }
@@ -71,4 +82,5 @@ void platform_sync(void) {
     while (old == stm32_sys_tick_overflowcnt)
         ;
 }
+
 void sys_tick_handler(void) { ++stm32_sys_tick_overflowcnt; }

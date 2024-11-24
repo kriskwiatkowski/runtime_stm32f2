@@ -12,12 +12,15 @@
  * for more details.
  */
 
+#define SERIAL_GPIO GPIOD
+#define SERIAL_USART USART3
+#define SERIAL_PINS (GPIO8 | GPIO9)
+
 #include <libopencm3/cm3/dwt.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/systick.h>
 #include <libopencm3/stm32/flash.h>
 #include <libopencm3/stm32/gpio.h>
-#include <libopencm3/stm32/pwr.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/rng.h>
 #include <libopencm3/stm32/usart.h>
@@ -26,22 +29,12 @@
 
 #include "printf.h"
 
-#define SERIAL_GPIO GPIOG
-#define SERIAL_USART LPUART1
-#define SERIAL_PINS (GPIO8 | GPIO7)
+static uint32_t _clock_freq;
 
-__attribute__((unused)) static uint32_t _clock_freq;
-
-/* Patched function for newer PLL not yet supported by opencm3 */
-void _rcc_set_main_pll(uint32_t source, uint32_t pllm, uint32_t plln,
-                       uint32_t pllp, uint32_t pllq, uint32_t pllr) {
-    RCC_PLLCFGR = (RCC_PLLCFGR_PLLM(pllm) << RCC_PLLCFGR_PLLM_SHIFT) |
-                  (plln << RCC_PLLCFGR_PLLN_SHIFT) |
-                  ((pllp & 0x1Fu) << 27u) | /* NEWER PLLP */
-                  (source << RCC_PLLCFGR_PLLSRC_SHIFT) |
-                  (pllq << RCC_PLLCFGR_PLLQ_SHIFT) |
-                  (pllr << RCC_PLLCFGR_PLLR_SHIFT) | RCC_PLLCFGR_PLLREN;
-}
+#ifdef STM32F2
+extern uint32_t rcc_apb1_frequency;
+extern uint32_t rcc_apb2_frequency;
+#endif
 
 /// ############################
 /// Internal implementation
@@ -50,15 +43,12 @@ void _rcc_set_main_pll(uint32_t source, uint32_t pllm, uint32_t plln,
 volatile unsigned long long stm32_sys_tick_overflowcnt = 0;
 
 static void usart_setup(int baud) {
-    rcc_periph_clock_enable(RCC_GPIOG);
-    rcc_periph_clock_enable(RCC_LPUART1);
-
-    PWR_CR2 |= PWR_CR2_IOSV;
-    gpio_set_output_options(SERIAL_GPIO, GPIO_OTYPE_PP, GPIO_OSPEED_100MHZ,
+    rcc_periph_clock_enable(RCC_GPIOD);
+    rcc_periph_clock_enable(RCC_USART3);
+    gpio_set_output_options(SERIAL_GPIO, GPIO_OTYPE_OD, GPIO_OSPEED_100MHZ,
                             SERIAL_PINS);
-    gpio_set_af(SERIAL_GPIO, GPIO_AF8, SERIAL_PINS);
-    gpio_mode_setup(SERIAL_GPIO, GPIO_MODE_AF, GPIO_PUPD_NONE, SERIAL_PINS);
-
+    gpio_mode_setup(SERIAL_GPIO, GPIO_MODE_AF, GPIO_PUPD_PULLUP, SERIAL_PINS);
+    gpio_set_af(SERIAL_GPIO, GPIO_AF7, SERIAL_PINS);
     usart_set_baudrate(SERIAL_USART, baud);
     usart_set_databits(SERIAL_USART, 8);
     usart_set_stopbits(SERIAL_USART, USART_STOPBITS_1);
@@ -78,71 +68,59 @@ static void systick_setup(void) {
 }
 
 static void set_clock(platform_op_mode_t a) {
-    // Benchmark @ 20MhZ
-    static const size_t speed_benchMhZ           = 20000000;
-    static const unsigned flash_wait_state_bench = FLASH_ACR_LATENCY_0WS;
-    // Benchmark @ 120MhZ
-    static const size_t speed_fastMhz           = 120000000;
-    static const unsigned flash_wait_state_fast = 0x05;
-    size_t speedMhZ;
     size_t flash_wait_state;
 
+    /* Some STM32 Platform */
+    rcc_periph_clock_enable(RCC_RNG);
+    rcc_periph_clock_enable(RCC_GPIOH);
+    /* All of them use an external oscillator with bypass. */
+    rcc_osc_off(RCC_HSE);
+    rcc_osc_bypass_enable(RCC_HSE);
+    rcc_osc_on(RCC_HSE);
+    rcc_wait_for_osc_ready(RCC_HSE);
+
     if (a == PLATFORM_CLOCK_MAX) {
-        speedMhZ         = speed_fastMhz;
-        flash_wait_state = flash_wait_state_fast;
+        rcc_ahb_frequency  = 120000000;
+        rcc_apb1_frequency = 30000000;
+        rcc_apb2_frequency = 60000000;
+        _clock_freq        = 120000000;
+        flash_wait_state   = FLASH_ACR_LATENCY_3WS;
+
+        rcc_set_hpre(RCC_CFGR_HPRE_DIV_NONE);
+        rcc_set_ppre1(RCC_CFGR_PPRE_DIV_4);
+        rcc_set_ppre2(RCC_CFGR_PPRE_DIV_2);
     } else if (a == PLATFORM_CLOCK_USERSPACE) {
-        speedMhZ         = speed_benchMhZ;
-        flash_wait_state = flash_wait_state_bench;
+        rcc_ahb_frequency  = 30000000;
+        rcc_apb1_frequency = 30000000;
+        rcc_apb2_frequency = 30000000;
+        _clock_freq        = 30000000;
+        flash_wait_state   = FLASH_ACR_LATENCY_0WS;
+
+        rcc_set_hpre(RCC_CFGR_HPRE_DIV_4);
+        rcc_set_ppre1(RCC_CFGR_PPRE_DIV_NONE);
+        rcc_set_ppre2(RCC_CFGR_PPRE_DIV_NONE);
     } else {
         // Do nothing
         return;
     }
-
-    rcc_periph_clock_enable(RCC_PWR);
-    rcc_periph_clock_enable(RCC_SYSCFG);
-    pwr_set_vos_scale(PWR_SCALE1);
-
-    rcc_osc_on(RCC_HSI16);
-    rcc_wait_for_osc_ready(RCC_HSI16);
-    rcc_ahb_frequency  = speedMhZ;
-    rcc_apb1_frequency = speedMhZ;
-    rcc_apb2_frequency = speedMhZ;
-    _clock_freq        = speedMhZ;
-    rcc_set_hpre(RCC_CFGR_HPRE_NODIV);
-    rcc_set_ppre1(RCC_CFGR_PPRE_NODIV);
-    rcc_set_ppre2(RCC_CFGR_PPRE_NODIV);
     rcc_osc_off(RCC_PLL);
 
-    while (rcc_is_osc_ready(RCC_PLL)) {};
+    /* Configure the PLL oscillator (use CUBEMX tool). */
+    rcc_set_main_pll_hse(8, 240, 2, 5);
 
-    if (a == PLATFORM_CLOCK_MAX) {
-        /* Configure the PLL oscillator (use CUBEMX tool -> scale HSI16 to 120MHz). */
-        _rcc_set_main_pll(RCC_PLLCFGR_PLLSRC_HSI16, 1, 15, 2,
-                          RCC_PLLCFGR_PLLQ_DIV2, RCC_PLLCFGR_PLLR_DIV2);
-        rcc_osc_on(RCC_PLL);
-        rcc_wait_for_osc_ready(RCC_PLL);
-    } else {
-        /* Configure the PLL oscillator (use CUBEMX tool -> scale HSI16 to 20MHz). */
-        _rcc_set_main_pll(RCC_PLLCFGR_PLLSRC_HSI16, 1, 10, 2,
-                          RCC_PLLCFGR_PLLQ_DIV2, RCC_PLLCFGR_PLLR_DIV8);
-        rcc_osc_on(RCC_PLL);
-    }
     /* Enable PLL oscillator and wait for it to stabilize. */
+    rcc_osc_on(RCC_PLL);
+    rcc_wait_for_osc_ready(RCC_PLL);
     flash_dcache_enable();
     flash_icache_enable();
-    flash_set_ws(flash_wait_state);
+    flash_set_ws(FLASH_ACR_LATENCY_3WS);
     flash_prefetch_enable();
+
     rcc_set_sysclk_source(RCC_CFGR_SW_PLL);
     rcc_wait_for_sysclk_status(RCC_PLL);
 }
 
-static void setup_rng(void) {
-    rcc_osc_on(RCC_HSI48); /* HSI48 must always be on for RNG */
-    rcc_wait_for_osc_ready(RCC_HSI48);
-    rcc_periph_clock_enable(RCC_RNG);
-    rcc_set_clock48_source(RCC_CCIPR_CLK48SEL_HSI48);
-    rng_enable();
-}
+static void setup_rng(void) { rng_enable(); }
 
 // Implements printf. Send a char to the terminal.
 void _putchar(char character) {
