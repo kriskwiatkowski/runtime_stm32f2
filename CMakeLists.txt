@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 include(FetchContent)
 
 project(stm32l4_runtime LANGUAGES C ASM)
-set(MAIN_TARGET stm32l4_runtime)
+set(MAIN_TARGET stm32f2_runtime)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_C_STANDARD 99)
 set(OUTPUT ${CMAKE_BINARY_DIR}/pack)
