@@ -41,6 +41,8 @@ target_sources(
     FILES
         ${CMAKE_SOURCE_DIR}/inc/platform/printf.h
         ${CMAKE_SOURCE_DIR}/inc/platform/platform.h
+        ${CMAKE_SOURCE_DIR}/inc/platform/utils.h
+        ${CMAKE_SOURCE_DIR}/inc/platform/stack_usage.h
     BASE_DIRS
         ${CMAKE_SOURCE_DIR}/inc/platform)
 
