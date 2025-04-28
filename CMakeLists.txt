@@ -1,24 +1,29 @@
 cmake_minimum_required(VERSION 3.10)
 include(FetchContent)
 
-project(stm32l4_runtime LANGUAGES C ASM)
-set(MAIN_TARGET stm32f2_runtime)
+set(RUNNER_TARGET stm32f2)
+project(
+    ${RUNNER_TARGET}_runtime
+    VERSION 0.0.2
+    LANGUAGES C ASM)
+
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_C_STANDARD 99)
-set(OUTPUT ${CMAKE_BINARY_DIR}/pack)
-set(CMAKE_INSTALL_BINDIR ${OUTPUT}/bin)
-set(CMAKE_INSTALL_LIBDIR ${OUTPUT}/lib)
-set(CMAKE_INSTALL_SRCDIR ${OUTPUT}/src)
-set(CMAKE_INSTALL_INCLUDEDIR ${OUTPUT}/include/platform)
+set(CMAKE_INSTALL_BINDIR bin)
+set(CMAKE_INSTALL_LIBDIR lib)
+set(CMAKE_INSTALL_SRCDIR src)
+set(CMAKE_INSTALL_INCLUDEDIR include/platform)
 set(LINKER_SCRIPT ${PROJECT_SOURCE_DIR}/src/stm32f207zg.ld)
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}")
 
-include(postbuild)
+include(GNUInstallDirs)
+include(cmake/postbuild)
 
 if (CMAKE_BUILD_TYPE MATCHES "Debug")
     string(APPEND CMAKE_C_FLAGS " -O0")
 endif()
 
+# ---- Build libopenCM3 as a dependency ----
 FetchContent_Declare(libopencm3
   GIT_REPOSITORY             https://github.com/libopencm3/libopencm3.git
   GIT_TAG                    32a169207775d6c53c536d46b78ecf8eca3fdd18
@@ -27,15 +32,20 @@ FetchContent_Declare(libopencm3
   SOURCE_DIR                 ${CMAKE_BINARY_DIR}/3rd/libopencm3
 )
 FetchContent_MakeAvailable(libopencm3)
+add_custom_target(libopencm3
+    COMMAND FP_FLAGS="-mfloat-abi=soft" CFLAGS='-fno-asynchronous-unwind-tables' CC=${CMAKE_C_COMPILER} make V=1 TARGETS='stm32/f2'
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/3rd/libopencm3)
 
+# ---- Declare target library ----
 add_library(
-    ${MAIN_TARGET} STATIC
+    ${RUNNER_TARGET} STATIC
+    src/handlers.c
     src/init.c
     src/rng.c
     src/printf.c)
 
 target_sources(
-    ${MAIN_TARGET}
+    ${RUNNER_TARGET}
     PUBLIC
     FILE_SET HEADERS
     FILES
@@ -47,65 +57,56 @@ target_sources(
         ${CMAKE_SOURCE_DIR}/inc/platform)
 
 target_compile_definitions(
-    ${MAIN_TARGET} PRIVATE
+    ${RUNNER_TARGET} PRIVATE
     ${EXTRA_C_FLAGS})
 
 target_include_directories(
-    ${MAIN_TARGET}
-    PRIVATE
-        ${CMAKE_BINARY_DIR}/3rd/libopencm3/include
+    ${RUNNER_TARGET}
     PUBLIC
-        ${CMAKE_SOURCE_DIR}/inc)
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/inc>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/3rd/libopencm3/include>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/3rd/libopencm3/include>)
 
-add_custom_target(libopencm3
-    COMMAND FP_FLAGS="-mfloat-abi=soft" CFLAGS='-fno-asynchronous-unwind-tables' CC=${CMAKE_C_COMPILER} make V=1 TARGETS='stm32/f2'
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/3rd/libopencm3)
+add_dependencies(
+    ${RUNNER_TARGET} libopencm3)
 
-add_dependencies(${MAIN_TARGET} libopencm3)
+include(GenerateExportHeader)
+generate_export_header(
+    ${RUNNER_TARGET}
+    BASE_NAME ${RUNNER_TARGET}
+    EXPORT_FILE_NAME export/${RUNNER_TARGET}/${RUNNER_TARGET}_export.h)
 
+# ---- Hello world application ----
 add_executable(
     hello
-    app/hello.c
-    src/handlers.c)
+    app/hello.c)
+
 target_include_directories(
-        hello PRIVATE ${CMAKE_BINARY_DIR}/3rd/libopencm3/include)
-target_compile_definitions(hello PRIVATE -DSTM32F2)
-target_link_libraries(
     hello
-    ${MAIN_TARGET}
+    PUBLIC
+    ${CMAKE_BINARY_DIR}/3rd/libopencm3/include)
+
+target_compile_definitions(hello PRIVATE -DSTM32F2)
+
+target_link_libraries(
+    hello PRIVATE
+    ${RUNNER_TARGET}
     -L${CMAKE_BINARY_DIR}/3rd/libopencm3/lib -lopencm3_stm32f2)
+
 target_link_options(
     hello PRIVATE
-    "-T${LINKER_SCRIPT}" -nostartfiles)
+    "-T${LINKER_SCRIPT}" -nostartfiles
+    -Wl,--whole-archive $<TARGET_FILE_NAME:${RUNNER_TARGET}> -Wl,--no-whole-archive)
+
 target_postbuild_executable(hello ${CMAKE_INSTALL_BINDIR})
 
-install(
-    TARGETS ${MAIN_TARGET}
-    ARCHIVE
-    PUBLIC_HEADER
-    FILE_SET HEADERS)
+include(cmake/install-rules.cmake)
 
-install(
-    FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/hello.bin
-    DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-install(
-    FILES
-        ${CMAKE_BINARY_DIR}/3rd/libopencm3/lib/libopencm3_stm32f2.a
-        ${CMAKE_SOURCE_DIR}/src/stm32f207zg.ld
-    DESTINATION
-        ${CMAKE_INSTALL_LIBDIR})
-
-install(
-    FILES
-        ${CMAKE_SOURCE_DIR}/src/handlers.c
-    DESTINATION
-        ${CMAKE_INSTALL_SRCDIR})
-
-install(
-    DIRECTORY
-        ${CMAKE_BINARY_DIR}/3rd/libopencm3/include/libopencm3
-        ${CMAKE_BINARY_DIR}/3rd/libopencm3/include/libopencmsis
-    DESTINATION
-        ${CMAKE_INSTALL_INCLUDEDIR})
+# ---- CPack ----
+string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOW)
+set(CPACK_GENERATOR "TGZ")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_FILE_NAME "${RUNNER_TARGET}_${PROJECT_VERSION}_${CMAKE_BUILD_TYPE_LOW}")
+include(CPack)
