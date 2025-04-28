@@ -1,5 +1,5 @@
 {
-    "version": 5,
+    "version": 6,
     "cmakeMinimumRequired": {
         "major": 3,
         "minor": 13,
@@ -7,25 +7,81 @@
     },
     "configurePresets": [
         {
-            "name": "stm32f2",
-            "displayName": "ARMv7-M",
+            "name": "base",
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/out/${presetName}",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
             "toolchainFile": "toolchains/gcc-armv7_m-unknown-none-eabi.toolchain",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "MinSizeRel",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/${presetName}",
                 "EXTRA_C_FLAGS": "-DSTM32F2 -DSTM32"
+            }
+        },
+        {
+            "name": "stm32f2",
+            "inherits": "base",
+            "displayName": "ARMv7-M Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "stm32f2-minsizerel",
+            "inherits": "base",
+            "displayName": "ARMv7-M MinSizeRel",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel"
+            }
+        },
+        {
+            "name": "stm32f2-reldebinfo",
+            "inherits": "base",
+            "displayName": "ARMv7-M RelWithDebInfo",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
             }
         }
     ],
     "buildPresets": [
         {
-            "name": "stm32f2",
-            "configurePreset": "stm32f2",
+            "name": "base",
+            "hidden": true,
             "targets": [
                 "all",
                 "install"
             ]
+        },
+        {
+            "name": "stm32f2",
+            "configurePreset": "stm32f2",
+            "inherits": "base"
+        },
+        {
+            "name": "stm32f2-minsizerel",
+            "configurePreset": "stm32f2-minsizerel",
+            "inherits": "base"
+        },
+        {
+            "name": "stm32f2-reldebinfo",
+            "configurePreset": "stm32f2-reldebinfo",
+            "inherits": "base"
+        }
+    ],
+    "packagePresets": [
+        {
+            "name": "stm32f2",
+            "configurePreset": "stm32f2",
+            "packageDirectory": "${sourceDir}/out/package/${presetName}"
+        },
+        {
+            "name": "stm32f2-minsizerel",
+            "configurePreset": "stm32f2-minsizerel",
+            "packageDirectory": "${sourceDir}/out/package/${presetName}"
+        },
+        {
+            "name": "stm32f2-reldebinfo",
+            "configurePreset": "stm32f2-reldebinfo",
+            "packageDirectory": "${sourceDir}/out/package/${presetName}"
         }
     ]
 }

@@ -12,7 +12,9 @@
  * for more details.
  *
  */
+#ifndef STM32
 #define STM32
+#endif
 
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/scb.h>

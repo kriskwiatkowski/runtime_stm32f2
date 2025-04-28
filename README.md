@@ -7,6 +7,7 @@ Creates runtime environment that allows running apps on STM32F2. One needs to bu
 ```
 cmake --preset stm32f2
 cmake --build --preset stm32f2
+cpack --preset stm32f2
 ```
 
 Libraries will be compiled and placed in the ``build/pack`` directory.
