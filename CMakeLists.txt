@@ -4,7 +4,7 @@ include(FetchContent)
 set(RUNNER_TARGET stm32f2)
 project(
     ${RUNNER_TARGET}_runtime
-    VERSION 0.0.2
+    VERSION 0.0.3
     LANGUAGES C ASM)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
@@ -24,17 +24,28 @@ if (CMAKE_BUILD_TYPE MATCHES "Debug")
 endif()
 
 # ---- Build libopenCM3 as a dependency ----
-FetchContent_Declare(libopencm3
+FetchContent_Declare(libopencm3_target
   GIT_REPOSITORY             https://github.com/libopencm3/libopencm3.git
   GIT_TAG                    32a169207775d6c53c536d46b78ecf8eca3fdd18
   TLS_VERIFY                 TRUE
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_DIR                 ${CMAKE_BINARY_DIR}/3rd/libopencm3
 )
-FetchContent_MakeAvailable(libopencm3)
-add_custom_target(libopencm3
+
+FetchContent_MakeAvailable(libopencm3_target)
+
+add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/3rd/libopencm3/lib/libopencm3_stm32f2.a
     COMMAND FP_FLAGS="-mfloat-abi=soft" CFLAGS='-fno-asynchronous-unwind-tables' CC=${CMAKE_C_COMPILER} make V=1 TARGETS='stm32/f2'
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/3rd/libopencm3)
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/3rd/libopencm3
+    COMMENT "Building libopencm3")
+add_custom_target(libopencm3_target
+    DEPENDS ${CMAKE_BINARY_DIR}/3rd/libopencm3/lib/libopencm3_stm32f2.a)
+
+add_library(opencm3_stm32f2 STATIC IMPORTED GLOBAL)
+set_target_properties(opencm3_stm32f2 PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/3rd/libopencm3/lib/libopencm3_stm32f2.a)
+add_dependencies(opencm3_stm32f2 libopencm3_target)
 
 # ---- Declare target library ----
 add_library(
@@ -69,8 +80,15 @@ target_include_directories(
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/3rd/libopencm3/include>
         $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/3rd/libopencm3/include>)
 
-add_dependencies(
-    ${RUNNER_TARGET} libopencm3)
+# This is needed to link the opencm3_stm32f2 library
+target_link_directories(
+    ${RUNNER_TARGET} INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/3rd/libopencm3/lib>
+    $<INSTALL_INTERFACE:lib>)
+
+target_link_libraries(
+    ${RUNNER_TARGET} PUBLIC
+    opencm3_stm32f2)
 
 include(GenerateExportHeader)
 generate_export_header(
@@ -92,8 +110,7 @@ target_compile_definitions(hello PRIVATE -DSTM32F2)
 
 target_link_libraries(
     hello PRIVATE
-    ${RUNNER_TARGET}
-    -L${CMAKE_BINARY_DIR}/3rd/libopencm3/lib -lopencm3_stm32f2)
+    ${RUNNER_TARGET})
 
 target_link_options(
     hello PRIVATE
